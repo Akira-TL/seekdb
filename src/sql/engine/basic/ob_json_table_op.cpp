@@ -973,10 +973,11 @@ int RegularCol::eval_ai_split_document_col(ObRegCol &col_node, void* in, JtScanC
   ObAiSplitDocAdapter *doc_adapter = reinterpret_cast<ObAiSplitDocAdapter *>(in);
   ObExpr* expr = ctx->spec_ptr_->column_exprs_.at(col_node.col_info_.output_column_idx_);
   ObDatum& res_datum = expr->locate_datum_for_write(*ctx->eval_ctx_);
-  int64_t cur_idx = doc_adapter->get_cur_idx();
   col_node.cur_pos_++;
 
-  if (OB_ISNULL(doc_adapter) || !doc_adapter->is_inited() || cur_idx < 0) {
+  if (OB_ISNULL(doc_adapter) || !doc_adapter->is_inited()) {
+    res_datum.set_null();
+  } else if (doc_adapter->get_cur_idx() < 0) {
     res_datum.set_null();
   } else {
     const ObAiSplitDocChunk &chunk = doc_adapter->get_cur_chunk();

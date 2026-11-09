@@ -178,9 +178,11 @@ int ObAiSplitDocAdapter::get_next_row()
 void ObAiSplitDocAdapter::reset()
 {
   if (OB_NOT_NULL(iterator_) && OB_NOT_NULL(allocator_)) {
-    OB_DELETEx(ObDocSplitIterator, allocator_, iterator_);
+    ObDocSplitIterator *iterator = iterator_;
+    iterator_ = nullptr;
+    iterator->destroy();
+    allocator_->free(iterator);
   }
-  iterator_ = nullptr;
   allocator_ = nullptr;
   is_inited_ = false;
   cur_idx_ = -1;
@@ -296,12 +298,15 @@ int ObTextSplitIterator::get_next_row(ObAiSplitDocChunk &chunk)
         }
 
         if (unit_count_in_chunk >= max_unit) {
-          while (window_start < boundary && window_start < content_.length() && isspace(content_[window_start])) {
+          while (window_start < boundary
+                 && window_start < content_.length()
+                 && isspace(static_cast<unsigned char>(content_[window_start]))) {
             window_start++;
           }
           if (window_start < boundary) {
             int64_t window_end = boundary;
-            while (window_end > window_start && isspace(content_[window_end - 1])) {
+            while (window_end > window_start
+                   && isspace(static_cast<unsigned char>(content_[window_end - 1]))) {
               window_end--;
             }
             chunk.init(chunk_id_++,
@@ -329,10 +334,12 @@ int ObTextSplitIterator::get_next_row(ObAiSplitDocChunk &chunk)
     if (!chunk_found && boundary == icu::BreakIterator::DONE) {
       if (unit_count_in_chunk > overlap_unit || chunk_id_ == 0) {
         int64_t end = content_.length();
-        while (window_start < end && isspace(content_[window_start])) {
+        while (window_start < end
+               && isspace(static_cast<unsigned char>(content_[window_start]))) {
           window_start++;
         }
-        while (end > window_start && isspace(content_[end - 1])) {
+        while (end > window_start
+               && isspace(static_cast<unsigned char>(content_[end - 1]))) {
           end--;
         }
         if (window_start < end) {
@@ -562,7 +569,8 @@ bool ObMarkdownSplitIterator::is_empty_section(const ObString& section_content)
     res = true;
   } else {
     int pos = 0;
-    while (pos < section_content.length() && isspace(section_content[pos])) {
+    while (pos < section_content.length()
+           && isspace(static_cast<unsigned char>(section_content[pos]))) {
       pos++;
     }
     res = pos == section_content.length();

@@ -4563,7 +4563,7 @@ int ObDMLResolver::unnest_table_add_column(TableItem *&table_item, ColumnItem *&
       // Integer columns: CHUNK_ID, CHUNK_OFFSET, CHUNK_LENGTH
       data_type.set_collation_level(CS_LEVEL_IMPLICIT);
       data_type.set_int();
-      data_type.set_accuracy(ObAccuracy::DDL_DEFAULT_ACCURACY[ObInt32Type]);
+      data_type.set_accuracy(ObAccuracy::DDL_DEFAULT_ACCURACY[ObIntType]);
     } else if (0 == col_name.case_compare("CHUNK_TEXT")) {
       // Keep the same type as content_expr
       if (OB_ISNULL(table_item) || OB_ISNULL(table_item->json_table_def_)

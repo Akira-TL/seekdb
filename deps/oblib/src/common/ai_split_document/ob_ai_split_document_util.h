@@ -25,10 +25,6 @@ namespace common
 class ObAiSplitDocumentUtil
 {
 public:
-  static int split_text_by_unit(const ObString &content,
-                                const ObAiSplitDocParams &params,
-                                ObIAllocator &allocator,
-                                ObArray<ObAiSplitDocChunk> &chunks);
   static int create_doc_split_iterator(const ObString &content,
                                        const ObAiSplitDocParams &params,
                                        ObIAllocator &allocator,

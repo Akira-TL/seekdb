@@ -21,17 +21,48 @@
 #include "share/schema/ob_schema_getter_guard.h"
 #include "lib/string/ob_sql_string.h"
 #include "lib/utility/utility.h"
-#include "sql/engine/expr/ob_expr_ai/ob_ai_func_utils.h"
 
 using namespace oceanbase::common;
 using namespace oceanbase::sql;
 using namespace oceanbase::share::schema;
-using oceanbase::common::ObAIFuncJsonUtils;
 
 namespace oceanbase
 {
 namespace sql
 {
+
+static bool is_safe_location_file_name(const ObString &filename)
+{
+  bool is_safe = !filename.empty();
+  if (is_safe) {
+    const char first = filename[0];
+    const bool has_drive_prefix =
+        filename.length() >= 2
+        && ((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z'))
+        && filename[1] == ':';
+    if (first == '/' || first == '\\' || has_drive_prefix) {
+      is_safe = false;
+    }
+  }
+
+  int64_t component_start = 0;
+  for (int64_t i = 0; is_safe && i <= filename.length(); ++i) {
+    const bool is_end = (i == filename.length());
+    const char ch = is_end ? '/' : filename[i];
+    if (!is_end && ch == '\0') {
+      is_safe = false;
+    } else if (is_end || ch == '/' || ch == '\\') {
+      const int64_t component_len = i - component_start;
+      if (component_len == 2
+          && filename[component_start] == '.'
+          && filename[component_start + 1] == '.') {
+        is_safe = false;
+      }
+      component_start = i + 1;
+    }
+  }
+  return is_safe;
+}
 
 ObExprLoadFile::ObExprLoadFile(ObIAllocator &alloc)
     : ObFuncExprOperator(alloc, T_FUN_SYS_LOAD_FILE, N_LOAD_FILE, 2,
@@ -121,9 +152,6 @@ int ObExprLoadFile::eval_load_file(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &
   return ret;
 }
 
-/*
-
-*/
 int ObExprLoadFile::read_file_from_location(const ObString &location_name,
                                             const ObString &filename,
                                             ObExecContext &exec_ctx,
@@ -134,7 +162,6 @@ int ObExprLoadFile::read_file_from_location(const ObString &location_name,
   ObSchemaGetterGuard schema_guard;
   const ObLocationSchema *location_schema = nullptr;
   ObString file_url;
-  ObString access_info;
   const ObSQLSessionInfo *session_info = exec_ctx.get_my_session();
   share::schema::ObSessionPrivInfo session_priv;
   const int64_t document_ai_file_max_size = ObExprLoadFile::DEFAULT_DOCUMENT_AI_FILE_MAX_SIZE;
@@ -182,12 +209,11 @@ int ObExprLoadFile::read_file_from_location(const ObString &location_name,
         } else if ((file_size = common::get_file_size(file_url_cstring.ptr())) < 0) {
           ret = OB_OBJECT_NAME_NOT_EXIST;
           LOG_WARN("file does not exist", K(ret), K(file_url_cstring));
-        } else if (file_size == 0) {
-          ret = OB_INVALID_DATA;
-          LOG_WARN("invalid file size (empty file)", K(ret), K(file_size));
         } else if (file_size > document_ai_file_max_size) {
           ret = OB_SIZE_OVERFLOW;
           LOG_WARN("file exceeds load_file size limit", K(ret), K(file_size), K(document_ai_file_max_size));
+        } else if (file_size == 0) {
+          file_data.reset();
         } else if (OB_ISNULL(buffer = static_cast<char *>(alloc.alloc(file_size)))) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
           LOG_WARN("fail to allocate memory", K(ret), K(file_size));
@@ -219,9 +245,9 @@ int ObExprLoadFile::build_file_path(const ObString &location_url,
 {
   int ret = OB_SUCCESS;
   ObStringBuffer path_builder(&alloc);
-  if (location_url.empty() || filename.empty()) {
+  if (location_url.empty() || !is_safe_location_file_name(filename)) {
     ret = OB_INVALID_ARGUMENT;
-    LOG_WARN("location url or filename is empty", K(ret));
+    LOG_WARN("invalid location url or filename", K(ret), K(location_url), K(filename));
   } else if (OB_FAIL(path_builder.reserve(location_url.length() + filename.length() + 2))) {
     LOG_WARN("fail to reserve memory", K(ret), K(location_url.length()), K(filename.length()));
   } else if (OB_FAIL(path_builder.append(location_url))) {
@@ -232,7 +258,7 @@ int ObExprLoadFile::build_file_path(const ObString &location_url,
     bool need_separator = true;
     ObString path_str;
     char *buf = nullptr;
-    if ((url_len > 0 && url_ptr[url_len - 1] == '/') || (filename.length() > 0 && filename.ptr()[0] == '/')) {
+    if (url_len > 0 && url_ptr[url_len - 1] == '/') {
       need_separator = false;
     }
     if (need_separator && OB_FAIL(path_builder.append("/"))) {

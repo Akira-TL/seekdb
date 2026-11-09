@@ -152,6 +152,7 @@ public:
 	virtual int open(const ObString &content, ObIAllocator &allocator, const ObAiSplitDocParams &params) = 0;
 	virtual int get_next_row(ObAiSplitDocChunk &chunk) = 0;
 	virtual int close() = 0;
+  virtual void destroy() = 0;
 };
 
 class ObTextSplitIterator : public ObDocSplitIterator
@@ -174,6 +175,7 @@ public:
   virtual int open(const ObString &content, ObIAllocator &allocator, const ObAiSplitDocParams &params) override;
   virtual int get_next_row(ObAiSplitDocChunk &chunk) override;
   virtual int close() override;
+  virtual void destroy() override { this->~ObTextSplitIterator(); }
 protected:
   bool is_inited_;
   ObString content_;
@@ -220,6 +222,7 @@ public:
   virtual int open(const ObString &content, ObIAllocator &allocator, const ObAiSplitDocParams &params) override;
   virtual int get_next_row(ObAiSplitDocChunk &chunk) override;
   virtual int close() override;
+  virtual void destroy() override { this->~ObMarkdownSplitIterator(); }
 private:
   const static int64_t DEFAULT_TITLE_LEVEL = 1;
   int get_next_section(ObString &section_title, ObString &section_content);
