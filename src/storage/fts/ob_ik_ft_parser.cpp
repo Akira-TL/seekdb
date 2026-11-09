@@ -24,11 +24,16 @@
 #include "lib/utility/ob_macro_utils.h"
 #include "lib/utility/utility.h"
 #include "storage/fts/ob_fts_struct.h"
+#include "storage/fts/ob_fts_literal.h"
 #include "storage/fts/ob_fts_plugin_helper.h"
+#include "storage/fts/dict/ob_ft_cache_dict.h"
+#include "storage/fts/dict/ob_ft_dat_dict.h"
 #include "storage/fts/dict/ob_ft_dict.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
 #include "storage/fts/dict/ob_ft_dict_hub.h"
+#include "storage/fts/dict/ob_ft_dict_table_iter.h"
 #include "storage/fts/dict/ob_ft_range_dict.h"
+#include "storage/fts/dict/ob_ft_trie.h"
 #include "storage/fts/ik/ob_ik_arbitrator.h"
 #include "storage/fts/ik/ob_ik_cjk_processor.h"
 #include "storage/fts/ik/ob_ik_letter_processor.h"
@@ -270,51 +275,140 @@ int ObIKFTParserDesc::get_add_word_flag(ObAddWordFlag &flag) const
 int ObIKFTParser::init_dict(const plugin::ObFTParserParam &param)
 {
   int ret = OB_SUCCESS;
-  ObIFTDict *tmp_dict = nullptr;
-
-  if (OB_ISNULL(hub_)) {
-    ret = OB_ERR_UNEXPECTED;
-    LOG_WARN("Dict hub is not inited", K(ret));
-  }
-
-  ObFTRangeDict *dict = nullptr;
   ObFTDictDesc main_dict_desc("main_dict",
                               ObFTDictType::DICT_IK_MAIN,
                               ObCharsetType::CHARSET_UTF8MB4,
                               ObCollationType::CS_TYPE_UTF8MB4_BIN);
-
   ObFTDictDesc quan_dict_desc("quan_dict",
                               ObFTDictType::DICT_IK_QUAN,
                               ObCharsetType::CHARSET_UTF8MB4,
                               ObCollationType::CS_TYPE_UTF8MB4_BIN);
-
   ObFTDictDesc stopword_dict_desc("stopword",
                                   ObFTDictType::DICT_IK_STOP,
                                   ObCharsetType::CHARSET_UTF8MB4,
                                   ObCollationType::CS_TYPE_UTF8MB4_BIN);
 
-  if (should_read_newest_table()) {
-    // clear dict cache, always false now
-  } else {
-    if (OB_FAIL(init_single_dict(main_dict_desc, cache_main_))) {
-      LOG_WARN("Failed to init main dict", K(ret));
+  if (OB_ISNULL(hub_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("Dict hub is not inited", K(ret));
+  } else if (!param.ik_param_.main_dict_.empty()
+             && 0 != param.ik_param_.main_dict_.case_compare(
+                         ObString(ObFTSLiteral::FT_DEFAULT_IK_DICT_UTF8_TABLE))) {
+    if (OB_FAIL(init_custom_dict(
+            param.ik_param_.main_dict_, ObFTDictType::DICT_IK_MAIN, dict_main_))) {
+      LOG_WARN("Failed to init custom main dict", K(ret), K(param.ik_param_.main_dict_));
+    }
+  } else if (OB_FAIL(init_single_dict(main_dict_desc, cache_main_))) {
+    LOG_WARN("Failed to init main dict", K(ret));
+  } else if (OB_FAIL(build_dict_from_cache(main_dict_desc, cache_main_, dict_main_))) {
+    LOG_WARN("Failed to build main dict", K(ret));
+  }
+
+  if (OB_SUCC(ret)) {
+    if (!param.ik_param_.quan_dict_.empty()
+        && 0 != param.ik_param_.quan_dict_.case_compare(
+                    ObString(ObFTSLiteral::FT_DEFAULT_IK_QUANTIFIER_UTF8_TABLE))) {
+      if (OB_FAIL(init_custom_dict(
+              param.ik_param_.quan_dict_, ObFTDictType::DICT_IK_QUAN, dict_quan_))) {
+        LOG_WARN("Failed to init custom quantifier dict", K(ret), K(param.ik_param_.quan_dict_));
+      }
     } else if (OB_FAIL(init_single_dict(quan_dict_desc, cache_quan_))) {
       LOG_WARN("Failed to init quantifier dict", K(ret));
+    } else if (OB_FAIL(build_dict_from_cache(quan_dict_desc, cache_quan_, dict_quan_))) {
+      LOG_WARN("Failed to build quantifier dict", K(ret));
+    }
+  }
+
+  if (OB_SUCC(ret)) {
+    if (!param.ik_param_.stopword_dict_.empty()
+        && 0 != param.ik_param_.stopword_dict_.case_compare(
+                    ObString(ObFTSLiteral::FT_DEFAULT_IK_STOPWORD_UTF8_TABLE))) {
+      if (OB_FAIL(init_custom_dict(
+              param.ik_param_.stopword_dict_, ObFTDictType::DICT_IK_STOP, dict_stop_))) {
+        LOG_WARN("Failed to init custom stopword dict", K(ret), K(param.ik_param_.stopword_dict_));
+      }
     } else if (OB_FAIL(init_single_dict(stopword_dict_desc, cache_stop_))) {
       LOG_WARN("Failed to init stopword dict", K(ret));
+    } else if (OB_FAIL(build_dict_from_cache(stopword_dict_desc, cache_stop_, dict_stop_))) {
+      LOG_WARN("Failed to build stopword dict", K(ret));
+    }
+  }
+
+  return ret;
+}
+
+int ObIKFTParser::init_custom_dict(const ObString &table_name,
+                                      const ObFTDictType dict_type,
+                                      ObIFTDict *&dict)
+{
+  int ret = OB_SUCCESS;
+  ObArenaAllocator trie_allocator(lib::ObMemAttr("IKCustomDict"));
+  ObFTTrie<void> trie(trie_allocator, ObCollationType::CS_TYPE_UTF8MB4_BIN);
+  bool has_word = false;
+
+  SMART_VAR(ObISQLClient::ReadResult, result)
+  {
+    ObFTDictTableIter iter(result);
+    if (OB_FAIL(iter.init_custom_table(table_name))) {
+      LOG_WARN("Failed to open custom dictionary table", K(ret), K(table_name));
+    } else {
+      while (OB_SUCC(ret)) {
+        ObString word;
+        if (OB_FAIL(iter.get_key(word))) {
+          LOG_WARN("Failed to read custom dictionary word", K(ret), K(table_name));
+        } else if (word.empty()) {
+          ret = OB_INVALID_ARGUMENT;
+          LOG_WARN("Custom dictionary word is empty", K(ret), K(table_name));
+        } else if (OB_FAIL(trie.insert(word, {}))) {
+          LOG_WARN("Failed to insert custom dictionary word", K(ret), K(table_name), K(word));
+        } else {
+          has_word = true;
+          if (OB_FAIL(iter.next())) {
+            if (OB_ITER_END == ret) {
+              ret = OB_SUCCESS;
+              break;
+            } else {
+              LOG_WARN("Failed to advance custom dictionary iterator", K(ret), K(table_name));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  ObFTDAT *dat = nullptr;
+  size_t dat_size = 0;
+  ObFTCacheDict *custom_dict = nullptr;
+  if (OB_FAIL(ret)) {
+  } else if (!has_word) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Custom dictionary table is empty", K(ret), K(table_name));
+  } else {
+    ObFTDATBuilder<void> builder(allocator_);
+    if (OB_FAIL(builder.init(trie))) {
+      LOG_WARN("Failed to init custom dictionary builder", K(ret), K(table_name));
+    } else if (OB_FAIL(builder.build_from_trie(trie))) {
+      LOG_WARN("Failed to build custom dictionary", K(ret), K(table_name));
+    } else if (OB_FAIL(builder.get_mem_block(dat, dat_size))) {
+      LOG_WARN("Failed to get custom dictionary memory", K(ret), K(table_name));
+    } else if (OB_ISNULL(custom_dict = OB_NEWx(
+                             ObFTCacheDict,
+                             &allocator_,
+                             ObCollationType::CS_TYPE_UTF8MB4_BIN,
+                             dat))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("Failed to allocate custom dictionary", K(ret), K(table_name), K(dict_type));
+    } else if (OB_FAIL(custom_dict->init())) {
+      LOG_WARN("Failed to init custom dictionary", K(ret), K(table_name), K(dat_size));
+    } else {
+      dict = custom_dict;
+      custom_dict = nullptr;
     }
   }
 
   if (OB_FAIL(ret)) {
-    // already logged.
-  } else if (OB_FAIL(build_dict_from_cache(main_dict_desc, cache_main_, dict_main_))) {
-    LOG_WARN("Failed to build dict main", K(ret));
-  } else if (OB_FAIL(build_dict_from_cache(quan_dict_desc, cache_quan_, dict_quan_))) {
-    LOG_WARN("Failed to build dict quantifier", K(ret));
-  } else if (OB_FAIL(build_dict_from_cache(stopword_dict_desc, cache_stop_, dict_stop_))) {
-    LOG_WARN("Failed to build dict stopword", K(ret));
+    OB_DELETEx(ObFTCacheDict, &allocator_, custom_dict);
   }
-
   return ret;
 }
 

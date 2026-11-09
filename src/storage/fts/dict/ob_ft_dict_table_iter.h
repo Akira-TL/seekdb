@@ -38,6 +38,7 @@ public:
 
 public:
   int init(const ObString &table_name);
+  int init_custom_table(const ObString &qualified_table_name);
 
 private:
   void reset();

@@ -412,6 +412,9 @@ int ObCreateTableResolver::resolve(const ParseNode &parse_tree)
               //  //do nothing
               //}
             }
+            if (OB_SUCC(ret) && OB_FAIL(check_fulltext_dict_table(table_schema))) {
+              SQL_RESV_LOG(WARN, "invalid fulltext dictionary table", K(ret), K(table_schema));
+            }
           }
         }
 
@@ -546,6 +549,20 @@ int ObCreateTableResolver::resolve(const ParseNode &parse_tree)
   }
   return ret;
 }
+
+int ObCreateTableResolver::check_fulltext_dict_table(const ObTableSchema &table_schema) const
+{
+  int ret = OB_SUCCESS;
+  if (!table_schema.is_fulltext_dict()) {
+  } else if (!has_explicit_organization_index()) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "FULLTEXT_DICT table must specify ORGANIZATION INDEX");
+  } else if (OB_FAIL(table_schema.check_fulltext_dict_structure())) {
+    SQL_RESV_LOG(WARN, "invalid fulltext dictionary structure", K(ret), K(table_schema));
+  }
+  return ret;
+}
+
 // Generate array of primary key column names
 // Generate an array composed of the indices of uk in index_arg_list
 // Check if the primary key and unique index are built on exactly the same (including order) columns or column families

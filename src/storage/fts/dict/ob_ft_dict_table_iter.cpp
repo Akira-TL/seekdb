@@ -29,6 +29,58 @@ namespace oceanbase
 {
 namespace storage
 {
+namespace
+{
+bool is_valid_dict_identifier(const ObString &identifier)
+{
+  bool valid = !identifier.empty();
+  for (int64_t i = 0; valid && i < identifier.length(); ++i) {
+    const char c = identifier.ptr()[i];
+    valid = (c >= 'a' && c <= 'z')
+            || (c >= 'A' && c <= 'Z')
+            || (c >= '0' && c <= '9')
+            || c == '_' || c == '$';
+  }
+  return valid;
+}
+
+int append_qualified_dict_table(ObSqlString &sql, const ObString &qualified_table_name)
+{
+  int ret = OB_SUCCESS;
+  int64_t dot_pos = -1;
+  for (int64_t i = 0; OB_SUCC(ret) && i < qualified_table_name.length(); ++i) {
+    if (qualified_table_name.ptr()[i] == '.') {
+      if (dot_pos >= 0) {
+        ret = OB_INVALID_ARGUMENT;
+      } else {
+        dot_pos = i;
+      }
+    }
+  }
+  if (OB_FAIL(ret) || dot_pos <= 0 || dot_pos >= qualified_table_name.length() - 1) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("custom dictionary table must be database.table", K(ret), K(qualified_table_name));
+  } else {
+    const ObString database_name(
+        static_cast<int32_t>(dot_pos), qualified_table_name.ptr());
+    const ObString table_name(
+        static_cast<int32_t>(qualified_table_name.length() - dot_pos - 1),
+        qualified_table_name.ptr() + dot_pos + 1);
+    if (!is_valid_dict_identifier(database_name) || !is_valid_dict_identifier(table_name)) {
+      ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("invalid custom dictionary table name", K(ret), K(qualified_table_name));
+    } else if (OB_FAIL(sql.append_fmt("`%.*s`.`%.*s`",
+                                      database_name.length(),
+                                      database_name.ptr(),
+                                      table_name.length(),
+                                      table_name.ptr()))) {
+      LOG_WARN("failed to append custom dictionary table", K(ret), K(qualified_table_name));
+    }
+  }
+  return ret;
+}
+} // namespace
+
 ObFTDictTableIter::ObFTDictTableIter(ObISQLClient::ReadResult &result)
     : ObIFTDictIterator(), is_inited_(false), res_(result)
 {
@@ -97,6 +149,51 @@ int ObFTDictTableIter::init(const ObString &table_name)
       if (OB_ITER_END != ret) {
         LOG_WARN("Failed to get next row", K(ret));
       } else {
+        ret = OB_SUCCESS;
+        is_inited_ = true;
+      }
+    } else {
+      is_inited_ = true;
+    }
+  }
+
+  return ret;
+}
+
+int ObFTDictTableIter::init_custom_table(const ObString &qualified_table_name)
+{
+  int ret = OB_SUCCESS;
+  common::ObMySQLProxy *sql_proxy = GCTX.sql_proxy_;
+
+  if (IS_INIT) {
+    ret = OB_INIT_TWICE;
+    LOG_WARN("Inited twice.", K(ret));
+  } else if (OB_ISNULL(sql_proxy)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("SQL proxy is null", K(ret));
+  } else {
+    SMART_VAR(ObSqlString, sql_string)
+    {
+      if (OB_FAIL(sql_string.append("SELECT word FROM "))) {
+        LOG_WARN("Failed to append SQL", K(ret));
+      } else if (OB_FAIL(append_qualified_dict_table(sql_string, qualified_table_name))) {
+        LOG_WARN("Failed to append qualified dictionary table", K(ret), K(qualified_table_name));
+      } else if (OB_FAIL(sql_string.append(" ORDER BY word"))) {
+        LOG_WARN("Failed to append SQL", K(ret));
+      } else if (OB_FAIL(sql_proxy->read(res_, sql_string.ptr()))) {
+        LOG_WARN("Failed to execute custom dictionary query", K(ret), K(qualified_table_name));
+      }
+    }
+
+    if (OB_FAIL(ret)) {
+    } else if (OB_ISNULL(res_.get_result())) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("Failed to get result", K(ret));
+    } else if (OB_FAIL(res_.get_result()->next())) {
+      if (OB_ITER_END != ret) {
+        LOG_WARN("Failed to get next row", K(ret));
+      } else {
+        ret = OB_SUCCESS;
         is_inited_ = true;
       }
     } else {
