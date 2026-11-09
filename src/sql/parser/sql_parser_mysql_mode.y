@@ -18455,7 +18455,11 @@ alter_with_opt_hint SYSTEM REFRESH FULLTEXT DICT normal_relation_factor
 {
   (void)($1);
   (void)($6);
-  malloc_non_terminal_node($$, result->malloc_pool_, T_FLUSH_KVCACHE, 2, NULL, NULL);
+  ParseNode *cache_name_value = NULL;
+  ParseNode *cache_name = NULL;
+  make_name_node(cache_name_value, result->malloc_pool_, "dict_cache");
+  malloc_non_terminal_node(cache_name, result->malloc_pool_, T_CACHE_NAME, 1, cache_name_value);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_FLUSH_KVCACHE, 2, NULL, cache_name);
 }
 |
 alter_with_opt_hint SYSTEM REFRESH MEMORY STAT
