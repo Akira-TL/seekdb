@@ -86,6 +86,11 @@ ob_set_subtarget(oblib_common reloc_json_type
   json_type/ob_json_diff.cpp
 )
 
+ob_set_subtarget(oblib_common ai_split_document
+  ai_split_document/ob_ai_split_document.cpp
+  ai_split_document/ob_ai_split_document_util.cpp
+)
+
 ob_set_subtarget(oblib_common reloc_number
   number/ob_number_v2.cpp
 )
