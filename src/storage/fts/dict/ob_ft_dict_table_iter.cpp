@@ -29,9 +29,7 @@ namespace oceanbase
 {
 namespace storage
 {
-namespace
-{
-bool is_valid_dict_identifier(const ObString &identifier)
+static bool is_valid_dict_identifier(const ObString &identifier)
 {
   bool valid = !identifier.empty();
   for (int64_t i = 0; valid && i < identifier.length(); ++i) {
@@ -44,7 +42,7 @@ bool is_valid_dict_identifier(const ObString &identifier)
   return valid;
 }
 
-int append_qualified_dict_table(ObSqlString &sql, const ObString &qualified_table_name)
+static int append_qualified_dict_table(ObSqlString &sql, const ObString &qualified_table_name)
 {
   int ret = OB_SUCCESS;
   int64_t dot_pos = -1;
@@ -79,7 +77,6 @@ int append_qualified_dict_table(ObSqlString &sql, const ObString &qualified_tabl
   }
   return ret;
 }
-} // namespace
 
 ObFTDictTableIter::ObFTDictTableIter(ObISQLClient::ReadResult &result)
     : ObIFTDictIterator(), is_inited_(false), res_(result)
