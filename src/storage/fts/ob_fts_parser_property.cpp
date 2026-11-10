@@ -1150,6 +1150,9 @@ int ObFTParserJsonProps::show_parser_properties(const ObFTParserJsonProps &prope
 int ObFTParserProperty::parse_for_parser_helper(const ObFTParser &parser, const ObString &json_str)
 {
   int ret = OB_SUCCESS;
+  if (json_str.empty()) {
+    return ret;
+  }
   ObFTParserJsonProps props;
   if (OB_FAIL(props.init())) {
     LOG_WARN("fail to init props", K(ret));
