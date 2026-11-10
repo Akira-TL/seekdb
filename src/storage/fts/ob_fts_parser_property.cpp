@@ -456,7 +456,12 @@ int ObFTParserJsonProps::config_get_quantifier_table(ObString &str) const
   } else {
     ObIJsonBase *value = nullptr;
     if (OB_FAIL(
-            root_->get_object_value(ObString(ObFTSLiteral::CONFIG_NAME_QUANTIFIER_TABLE), value))) {
+            root_->get_object_value(ObString(ObFTSLiteral::CONFIG_NAME_QUANTIFIER_TABLE), value))
+        && OB_SEARCH_NOT_FOUND == ret) {
+      ret = root_->get_object_value(
+          ObString(ObFTSLiteral::CONFIG_NAME_QUANTIFIER_TABLE_LEGACY), value);
+    }
+    if (OB_FAIL(ret)) {
       if (OB_SEARCH_NOT_FOUND == ret) {
       } else {
         LOG_WARN("Fail to get quantifier_table", K(ret));
@@ -629,6 +634,7 @@ int ObFTParserJsonProps::ik_rebuild_props_for_ddl(const bool log_to_user)
   static const char *supported[] = {
       ObFTSLiteral::CONFIG_NAME_DICT_TABLE,
       ObFTSLiteral::CONFIG_NAME_QUANTIFIER_TABLE,
+      ObFTSLiteral::CONFIG_NAME_QUANTIFIER_TABLE_LEGACY,
       ObFTSLiteral::CONFIG_NAME_STOPWORD_TABLE,
       ObFTSLiteral::CONFIG_NAME_IK_MODE,
   };
