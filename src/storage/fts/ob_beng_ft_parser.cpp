@@ -54,10 +54,22 @@ int ObBEngFTParser::get_next_token(
   } else if (OB_ISNULL(token.ptr_) || OB_UNLIKELY(0 >= token.len_ || 0 >= token_freq)) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("invalid arguments", K(ret), KP(token.ptr_), K(token.len_), K(token_freq));
+  } else if (OB_LIKELY(token_buf_pos_ <= token_buf_capacity_
+                        && token.len_ <= token_buf_capacity_ - token_buf_pos_)) {
+    buf = token_buf_ + token_buf_pos_;
+    token_buf_pos_ += token.len_;
+    MEMCPY(buf, token.ptr_, token.len_);
+    word = buf;
+    word_len = token.len_;
+    char_len = token.len_;
+    word_freq = token_freq;
+    LOG_DEBUG("succeed to add word", K(ObString(word_len, word)), K(word_freq));
   } else if (OB_ISNULL(buf = static_cast<char *>(allocator_.alloc(token.len_)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
     LOG_WARN("fail to allocate word memory", K(ret), K(token.len_));
   } else {
+    // Normalized Unicode can theoretically expand beyond the source byte length.
+    // Preserve the old per-token allocation as a safe fallback in that case.
     MEMCPY(buf, token.ptr_, token.len_);
     word = buf;
     word_len = token.len_;
@@ -92,7 +104,12 @@ int ObBEngFTParser::init(ObFTParserParam *param)
     } else if (OB_ISNULL(token_stream_)) {
       ret = OB_ERR_UNEXPECTED;
       LOG_WARN("token stream is nullptr", K(ret), KP(token_stream_));
+    } else if (OB_ISNULL(token_buf_ = static_cast<char *>(allocator_.alloc(param->ft_length_)))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to allocate token buffer", K(ret), K(param->ft_length_));
     } else {
+      token_buf_capacity_ = param->ft_length_;
+      token_buf_pos_ = 0;
       is_inited_ = true;
       LOG_DEBUG("succeed to init beng parser", K(ret), K(english_analyzer_), KPC(token_stream_), K(doc_));
     }
@@ -126,6 +143,9 @@ void ObBEngFTParser::reset()
   english_analyzer_.reset();
   doc_.reset();
   token_stream_ = nullptr;
+  token_buf_ = nullptr;
+  token_buf_capacity_ = 0;
+  token_buf_pos_ = 0;
   is_inited_ = false;
 }
 
