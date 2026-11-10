@@ -10,8 +10,7 @@
  * See the Mulan PubL v2 for more details.
  */
 
-#ifndef OCEANBASE_LIB_AI_SPLIT_DOCUMENT_OB_AI_SPLIT_DOCUMENT_H_
-#define OCEANBASE_LIB_AI_SPLIT_DOCUMENT_OB_AI_SPLIT_DOCUMENT_H_
+#pragma once
 
 #include "lib/string/ob_string.h"
 #include "lib/container/ob_se_array.h"
@@ -292,5 +291,3 @@ private:
 
 } // end namespace common
 } // end namespace oceanbase
-
-#endif /* OCEANBASE_LIB_AI_SPLIT_DOCUMENT_OB_AI_SPLIT_DOCUMENT_H_ */

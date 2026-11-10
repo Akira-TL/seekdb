@@ -10,8 +10,7 @@
  * See the Mulan PubL v2 for more details.
  */
 
-#ifndef OCEANBASE_LIB_AI_SPLIT_DOCUMENT_OB_AI_SPLIT_DOCUMENT_UTIL_H_
-#define OCEANBASE_LIB_AI_SPLIT_DOCUMENT_OB_AI_SPLIT_DOCUMENT_UTIL_H_
+#pragma once
 
 #include "ob_ai_split_document.h"
 #include "lib/alloc/malloc_hook.h"
@@ -32,4 +31,3 @@ public:
 };
 } // namespace common
 } // namespace oceanbase
-#endif /* OCEANBASE_LIB_AI_SPLIT_DOCUMENT_OB_AI_SPLIT_DOCUMENT_UTIL_H_ */

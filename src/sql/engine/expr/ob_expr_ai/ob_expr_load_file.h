@@ -10,8 +10,7 @@
  * See the Mulan PubL v2 for more details.
  */
 
-#ifndef OCEANBASE_SQL_ENGINE_EXPR_OB_EXPR_LOAD_FILE_
-#define OCEANBASE_SQL_ENGINE_EXPR_OB_EXPR_LOAD_FILE_
+#pragma once
 
 #include "sql/engine/expr/ob_expr_operator.h"
 
@@ -45,4 +44,3 @@ private:
 };
 }
 }
-#endif /*OCEANBASE_SQL_ENGINE_EXPR_OB_EXPR_LOAD_FILE_*/
